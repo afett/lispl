@@ -1,0 +1,293 @@
+#!/usr/bin/perl
+# lispl is Copyright (c) 2012, Andreas Fett.
+# This program is free software; you can redistribute it and/or modify it
+# under the same terms as Perl itself.
+
+# incomplete Bastard lisp from Hell^W perl interpreter
+# based on Peter Norvigs Lispy http://norvig.com/lispy.html
+# and Peter Michauxs 'Scheme from Scratch'
+# http://peter.michaux.ca/articles/scheme-from-scratch-introduction
+
+use warnings;
+use strict;
+use Scalar::Util qw(looks_like_number);
+use Switch 'Perl6';
+use feature qw(say);
+
+use Data::Dumper;
+
+package Bool;
+
+sub make
+{
+	my ($class, $value) = @_;
+	bless \$value, $class;
+}
+
+sub lisp_eval
+{
+	my $self = shift;
+	return $self;
+}
+
+sub to_string
+{
+	my $self = shift;
+	return ref($self) .':'. $$self->('True', 'False');
+}
+
+sub True
+{
+	my ($cons, $alt) = @_; return $alt;
+}
+
+sub False
+{
+	my ($cons, $alt) = @_; return $cons;
+}
+
+our $False = make Bool \&True;
+our $True = make Bool \&False;
+
+package Fixnum;
+
+sub make
+{
+	my ($class, $value) = @_;
+	bless \$value, $class;
+}
+
+sub lisp_eval
+{
+	my $self = shift;
+	return $self;
+}
+
+sub to_string
+{
+	my $self = shift;
+	return ref($self) .':'. $$self;
+}
+
+package Symbol;
+
+sub make
+{
+	my ($class, $value) = @_;
+	bless \$value, $class;
+}
+
+sub lisp_eval
+{
+	my ($self, $env) = @_;
+	my $ref = $env->find($$self);
+
+	die "variable '$$self' is unbound"
+		unless defined $ref;
+
+	return $$ref;
+}
+
+sub to_string
+{
+	my $self = shift;
+	return ref($self) .':'. $$self;
+}
+
+package Env;
+
+sub make
+{
+	my ($class, $params, $args, $outer) = @_;
+	my $self = { env => {} };
+	$self->{outer} = $outer if (defined $outer);
+	
+	@{$self->{env}}{
+		map { $$_ } @$params
+	} = @$args if (defined $params and defined $args);
+
+	bless $self, $class;
+}
+
+sub find
+{
+	{
+		my ($self, $var) = @_;
+
+		if (exists $self->{env}->{$var}) {
+			return \$self->{env}->{$var};
+		} 
+		
+		if (!exists $self->{outer}) {
+			return undef;
+		} 
+
+		@_ = ($self->{outer}, $var);
+		redo; # poor mans tail call
+	}
+}
+
+sub set
+{
+	my ($self, $var, $value) = @_;
+	my $x = $self->find($var);
+	die "undefined var $var" unless defined $x;
+	$$x = $value;
+}
+
+sub define
+{
+	my ($self, $var, $value) = @_;
+	$self->{env}{$var} = $value;
+}
+
+package List;
+
+sub make
+{
+	my ($class, @list) = @_;
+	bless \@list, $class;
+}
+
+sub car
+{
+	my $self = shift;
+	my ($car, @cdr) = @$self;
+	return $car;
+}
+
+sub cdr
+{
+	my $self = shift;
+	my ($car, @cdr) = @$self;
+	return make List @cdr;
+}
+
+sub to_string
+{
+	my $self = shift;
+	return '(' . map { $_->to_string; } @$self . ')';
+}
+
+sub lisp_eval
+{
+	my ($self, $env) = @_;
+	my ($form, @args) = @$self;
+	given ($$form) {
+		when 'quote'	{
+					return $self->cdr;
+				}
+# code below works
+		when 'if'	{
+					my ($test, $cons, $alt) = @args;
+					return ${ $test->lisp_eval($env) }->(
+						$cons->lisp_eval($env), $alt->lisp_eval($env));
+				}
+		when 'set!'	{
+					my ($var, $exp) = @args;
+					$env->set($$var, $exp->lisp_eval($env));
+				}
+		when 'lambda'	{
+					my ($vars, $exp) = @args;
+					return sub { $exp->lisp_eval(make Env($vars, \@_, $env)); };
+				}
+		when 'define'	{
+					my ($var, $exp) = @args;
+					$env->define($$var,
+						$exp->lisp_eval($env));
+				}
+		when 'begin'	{
+					my @l = map { $_->lisp_eval($env); } @args;
+					return pop @l;
+				}
+		default		{
+					my @l = map { $_->lisp_eval($env); } @$self;
+					my $proc = shift @l;
+					return $proc->(@l);
+				}
+	};
+}
+
+package main;
+
+sub atom($)
+{
+	my $value = $_[0];
+	if (looks_like_number($value)) {
+		return make Fixnum $_[0];
+	}
+
+	return make Symbol $_[0];
+}
+
+sub tokenize($)
+{
+	[grep { $_ } split /[ \t\n]|([)(])/, $_[0]];
+}
+
+sub read_from
+{
+	my $tokens = shift;
+
+	die "unexpected eof" if (scalar @{ $tokens } == 0);
+
+	my $token = shift @$tokens;
+	if ($token eq '(') {
+		my $L = make List;
+		while ($tokens->[0] ne ')') {
+			push @{ $L }, read_from($tokens);
+		}
+		shift @$tokens;
+		return $L;
+	} 
+	
+	die 'unexpected )' if ($token eq ')');
+	return atom($token);
+}
+
+sub lisp_read
+{
+	return read_from(tokenize($_[0]));
+}
+
+sub lisp_add
+{
+	my $sum;
+	for (@_) { $sum += $$_; } 
+	make Fixnum($sum);
+}
+
+sub lisp_mul
+{
+	my $prod;
+	for (@_) { $prod *= $$_; } 
+	make Fixnum($prod);
+}
+
+sub lisp_eq
+{
+	if (defined $_[0] and defined $_[1] and ${$_[0]} == ${$_[1]}) {
+		return $Bool::True;
+	}
+
+	return $Bool::False;
+}
+
+sub repl
+{
+	my $env = make Env;
+
+	$env->define('+', \&lisp_add);
+	$env->define('*', \&lisp_mul);
+	$env->define('=', \&lisp_eq);
+
+	for(;;) {
+		my $val = lisp_read(<STDIN>)->lisp_eval($env);
+		say 'Dump:',  Dumper($val);
+		say $val->to_string() if defined($val);
+	}
+}
+
+repl();
+
+
