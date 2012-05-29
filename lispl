@@ -284,9 +284,12 @@ sub repl
 	$env->define('car', sub { $_[0]->car;});
 	$env->define('cdr', sub { $_[0]->cdr;});
 
+	print '* ';
 	while (<STDIN>) {
+		/^\s*$/ and next;
 		my $val = lisp_read($_)->lisp_eval($env);
 		say $val->to_string() if defined($val);
+		print '* ';
 	}
 }
 
