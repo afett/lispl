@@ -166,7 +166,7 @@ sub cdr
 sub to_string
 {
 	my $self = shift;
-	return '(' . map { $_->to_string; } @$self . ')';
+	return '(' . join(' ', map { $_->to_string; } @$self). ')';
 }
 
 sub lisp_eval
@@ -283,7 +283,6 @@ sub repl
 
 	for(;;) {
 		my $val = lisp_read(<STDIN>)->lisp_eval($env);
-		say 'Dump:',  Dumper($val);
 		say $val->to_string() if defined($val);
 	}
 }
