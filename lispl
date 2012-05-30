@@ -136,16 +136,12 @@ sub lisp_eval
 	};
 }
 
-sub car
-{
-	my ($car, @cdr) = @{ $_[0] };
-	return $car;
-}
+sub car { @{ $_[0] }; }
 
 sub cdr
 {
-	my ($car, @cdr) = @{ $_[0] };
-	return make List @cdr;
+	shift @{ $_[0] };
+	make List @_;
 }
 
 package Env;
@@ -204,7 +200,7 @@ sub atom($)
 		return make Fixnum $_[0];
 	}
 
-	return make Symbol $_[0];
+	make Symbol $_[0];
 }
 
 sub tokenize($)
@@ -231,12 +227,12 @@ sub read_from
 	}
 
 	die 'unexpected )' if ($token eq ')');
-	return atom($token);
+	atom($token);
 }
 
 sub lisp_read
 {
-	return read_from(tokenize($_[0]));
+	read_from(tokenize($_[0]));
 }
 
 sub lisp_add
@@ -259,7 +255,7 @@ sub lisp_eq
 		return $Bool::True;
 	}
 
-	return $Bool::False;
+	$Bool::False;
 }
 
 sub repl
