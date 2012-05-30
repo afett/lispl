@@ -273,9 +273,9 @@ sub repl
 	$env->define('CDR', sub { $_[0]->cdr; });
 	$env->define('LIST', sub { make List @_; });
 	$env->define('LIST?', sub { $_[0]->list_p; });
-	$env->define('SYMBOL?', sub { $_[0]->symbol_p; );
-	$env->define('FIXNUM?', sub { $_[0]->fixnum_p; );
-	$env->define('BOOL?', sub { $_[0]->bool_p; );
+	$env->define('SYMBOL?', sub { $_[0]->symbol_p; });
+	$env->define('FIXNUM?', sub { $_[0]->fixnum_p; });
+	$env->define('BOOL?', sub { $_[0]->bool_p; });
 
 	print '* ';
 	while (<STDIN>) {
