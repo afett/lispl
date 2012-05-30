@@ -73,7 +73,7 @@ package Symbol;
 
 sub make
 {
-	my ($class, $value) = @_;
+	my ($class, $value) = ($_[0], uc($_[1]));
 	bless \$value, $class;
 }
 
@@ -174,30 +174,30 @@ sub lisp_eval
 	my ($self, $env) = @_;
 	my ($form, @args) = @$self;
 	given ($$form) {
-		when 'quote'	{
+		when 'QUOTE'	{
 					return $self->cdr()->[0];
 				}
-		when 'if'	{
+		when 'IF'	{
 					my ($test, $cons, $alt) = @args;
 					return ${ $test->lisp_eval($env) }->(
 						$cons->lisp_eval($env), $alt->lisp_eval($env));
 				}
-		when 'set!'	{
+		when 'SET!'	{
 					my ($var, $exp) = @args;
 					$env->set($$var, $exp->lisp_eval($env));
 					return $var;
 				}
-		when 'lambda'	{
+		when 'LAMBDA'	{
 					my ($vars, $exp) = @args;
 					return sub { $exp->lisp_eval(make Env($vars, \@_, $env)); };
 				}
-		when 'define'	{
+		when 'DEFINE'	{
 					my ($var, $exp) = @args;
 					$env->define($$var,
 						$exp->lisp_eval($env));
 					return $var;
 				}
-		when 'begin'	{
+		when 'BEGIN'	{
 					my @l = map { $_->lisp_eval($env); } @args;
 					return pop @l;
 				}
@@ -223,7 +223,7 @@ sub atom($)
 
 sub tokenize($)
 {
-	[grep { $_ } split /[ \t\n]|([)(])/, $_[0]];
+	[grep { $_ } split /[ \t\n]|([)(\'])/, $_[0]];
 }
 
 sub read_from
@@ -240,7 +240,9 @@ sub read_from
 		}
 		shift @$tokens;
 		return $L;
-	} 
+	} elsif ($token eq '\'') {
+		return make List make Symbol('QUOTE'), read_from($tokens);
+	}
 	
 	die 'unexpected )' if ($token eq ')');
 	return atom($token);
@@ -281,8 +283,8 @@ sub repl
 	$env->define('+', \&lisp_add);
 	$env->define('*', \&lisp_mul);
 	$env->define('=', \&lisp_eq);
-	$env->define('car', sub { $_[0]->car;});
-	$env->define('cdr', sub { $_[0]->cdr;});
+	$env->define('CAR', sub { $_[0]->car;});
+	$env->define('CDR', sub { $_[0]->cdr;});
 
 	print '* ';
 	while (<STDIN>) {
