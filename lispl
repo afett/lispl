@@ -16,18 +16,25 @@ use feature qw(say);
 
 use Data::Dumper;
 
+package Object;
+
+sub lisp_eval { $_[0]; }
+sub to_string { ${$_[0]}; }
+
+sub symbol_p() { $Bool::False; }
+sub list_p() { $Bool::False; }
+sub fixnum_p() { $Bool::False; }
+sub bool_p() { $Bool::False; }
+
 package Bool;
+our @ISA = qw(Object);
+
+sub bool_p() { $Bool::False; }
 
 sub make
 {
 	my ($class, $value) = @_;
 	bless \$value, $class;
-}
-
-sub lisp_eval
-{
-	my $self = shift;
-	return $self;
 }
 
 sub to_string
@@ -36,20 +43,13 @@ sub to_string
 	return $$self->('T', 'NIL');
 }
 
-sub True
-{
-	my ($cons, $alt) = @_; return $alt;
-}
-
-sub False
-{
-	my ($cons, $alt) = @_; return $cons;
-}
-
-our $False = make Bool \&True;
-our $True = make Bool \&False;
+our $True = make Bool sub { $_[0]; };
+our $False = make Bool sub { $_[1]; };
 
 package Fixnum;
+our @ISA = qw(Object);
+
+sub fixnum_p() { $Bool::True; }
 
 sub make
 {
@@ -57,19 +57,10 @@ sub make
 	bless \$value, $class;
 }
 
-sub lisp_eval
-{
-	my $self = shift;
-	return $self;
-}
-
-sub to_string
-{
-	my $self = shift;
-	return $$self;
-}
-
 package Symbol;
+our @ISA = qw(Object);
+
+sub symbol_p() { $Bool::True; }
 
 sub make
 {
@@ -88,79 +79,15 @@ sub lisp_eval
 	return $$ref;
 }
 
-sub to_string
-{
-	my $self = shift;
-	return $$self;
-}
-
-package Env;
-
-sub make
-{
-	my ($class, $params, $args, $outer) = @_;
-	my $self = { env => {} };
-	$self->{outer} = $outer if (defined $outer);
-	
-	@{$self->{env}}{
-		map { $$_ } @$params
-	} = @$args if (defined $params and defined $args);
-
-	bless $self, $class;
-}
-
-sub find
-{
-	{
-		my ($self, $var) = @_;
-
-		if (exists $self->{env}->{$var}) {
-			return \$self->{env}->{$var};
-		} 
-		
-		if (!exists $self->{outer}) {
-			return undef;
-		} 
-
-		@_ = ($self->{outer}, $var);
-		redo; # poor mans tail call
-	}
-}
-
-sub set
-{
-	my ($self, $var, $value) = @_;
-	my $x = $self->find($var);
-	die "undefined var $var" unless defined $x;
-	$$x = $value;
-}
-
-sub define
-{
-	my ($self, $var, $value) = @_;
-	$self->{env}{$var} = $value;
-}
-
 package List;
+our @ISA = qw(Object);
+
+sub list_p() { $Bool::True; }
 
 sub make
 {
 	my ($class, @list) = @_;
 	bless \@list, $class;
-}
-
-sub car
-{
-	my $self = shift;
-	my ($car, @cdr) = @$self;
-	return $car;
-}
-
-sub cdr
-{
-	my $self = shift;
-	my ($car, @cdr) = @$self;
-	return make List @cdr;
 }
 
 sub to_string
@@ -209,6 +136,65 @@ sub lisp_eval
 	};
 }
 
+sub car
+{
+	my ($car, @cdr) = @{ $_[0] };
+	return $car;
+}
+
+sub cdr
+{
+	my ($car, @cdr) = @{ $_[0] };
+	return make List @cdr;
+}
+
+package Env;
+
+sub make
+{
+	my ($class, $params, $args, $outer) = @_;
+	my $self = { env => {} };
+	$self->{outer} = $outer if (defined $outer);
+
+	@{$self->{env}}{
+		map { $$_ } @$params
+	} = @$args if (defined $params and defined $args);
+
+	bless $self, $class;
+}
+
+sub find
+{
+	{
+		my ($self, $var) = @_;
+
+		if (exists $self->{env}->{$var}) {
+			return \$self->{env}->{$var};
+		}
+
+		if (!exists $self->{outer}) {
+			return undef;
+		}
+
+		@_ = ($self->{outer}, $var);
+		redo; # poor mans tail call
+	}
+}
+
+sub set
+{
+	my ($self, $var, $value) = @_;
+	my $x = $self->find($var);
+	die "undefined var $var" unless defined $x;
+	$$x = $value;
+}
+
+sub define
+{
+	my ($self, $var, $value) = @_;
+	$self->{env}{$var} = $value;
+}
+
 package main;
 
 sub atom($)
@@ -243,7 +229,7 @@ sub read_from
 	} elsif ($token eq '\'') {
 		return make List make Symbol('QUOTE'), read_from($tokens);
 	}
-	
+
 	die 'unexpected )' if ($token eq ')');
 	return atom($token);
 }
@@ -283,8 +269,13 @@ sub repl
 	$env->define('+', \&lisp_add);
 	$env->define('*', \&lisp_mul);
 	$env->define('=', \&lisp_eq);
-	$env->define('CAR', sub { $_[0]->car;});
-	$env->define('CDR', sub { $_[0]->cdr;});
+	$env->define('CAR', sub { $_[0]->car; });
+	$env->define('CDR', sub { $_[0]->cdr; });
+	$env->define('LIST', sub { make List @_; });
+	$env->define('LIST?', sub { $_[0]->list_p; });
+	$env->define('SYMBOL?', sub { $_[0]->symbol_p; );
+	$env->define('FIXNUM?', sub { $_[0]->fixnum_p; );
+	$env->define('BOOL?', sub { $_[0]->bool_p; );
 
 	print '* ';
 	while (<STDIN>) {
